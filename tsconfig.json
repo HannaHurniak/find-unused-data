@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "es6",
+    // "sourceMap": true,
+    "outDir": "out",
+    "jsx": "react",
+    "moduleResolution": "node",
+    "baseUrl": "src",
+    "paths": {
+      "func": ["utils/functions/functions.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
