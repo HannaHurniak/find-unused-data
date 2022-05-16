@@ -12,6 +12,7 @@ let rootPath = path.resolve("src");
 const EXPORT = "Export";
 const IMPORT = "Import";
 const EXPORT_ALL = "ExportAllDeclaration";
+const TYPE_DECLARATION = "TSTypeAliasDeclaration";
 const DEFAULT = "default";
 const OWN_PROPERTY = {
   DECLARATION: "declaration",
@@ -56,7 +57,7 @@ const getExportFiles = () => {
           path.dirname(file),
           el.source.value
         );
-        const [ pathWithAllImport ] = allFiles.filter(
+        const [pathWithAllImport] = allFiles.filter(
           (path) => path.indexOf(exportAllFromPath) !== -1
         );
         exportAllFiles.push({
@@ -79,6 +80,7 @@ const getExportFiles = () => {
           el.hasOwnProperty(OWN_PROPERTY.DECLARATION)
         ) {
           if (el?.declaration?.name) {
+            //???
             exportFileNames.push({
               name: el.declaration.name,
               path: file,
@@ -127,7 +129,14 @@ const getExportFiles = () => {
           });
         }
 
-        if (el.type.startsWith(IMPORT) && el?.source?.value) {
+        if (el.type === TYPE_DECLARATION) {
+          exportFileNames.push({
+            name: el.id.name,
+            path: file,
+          });
+        }
+
+        if (el.type.startsWith(IMPORT)) {
           let importFromPath = path.resolve(
             path.dirname(file),
             el.source.value
@@ -177,13 +186,22 @@ const getExportFiles = () => {
             }
           });
         }
+
+        //for type typescript
+        // if (el.type.startsWith(IMPORT) && !el?.source?.value) {
+        //   importFileNames.push({
+        //     name: el.local.name,
+        //     path: file,
+        //     importFrom: file,
+        //   });
+        // }
       });
     });
   } catch (err) {
     console.error(err);
   }
   // console.log(exportFileNames);
-  // console.log(importFileNames);
+  console.log(importFileNames);
   return exportFileNames
     .filter(
       (exportFile) =>
