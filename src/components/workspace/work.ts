@@ -1,4 +1,3 @@
-const getWorkers = () => {
+export const getWorkers = () => {
     return 'workers';
 }
-export default getWorkers;

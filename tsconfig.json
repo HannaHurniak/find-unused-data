@@ -2,13 +2,13 @@
   "compilerOptions": {
     "target": "es6",
     "module": "es6",
-    // "sourceMap": true,
     "outDir": "out",
     "jsx": "react",
     "moduleResolution": "node",
     "baseUrl": "src",
     "paths": {
-      "func": ["utils/functions/functions.ts"]
+      "func": ["utils/functions/functions.ts"],
+      "orange": ["components/card/apelsin.ts"]
     }
   },
   "include": ["src/**/*"],
