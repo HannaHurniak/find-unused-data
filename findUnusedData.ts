@@ -7,7 +7,7 @@ const config = require("./tsconfig.json");
 // const EXTENSIONS = ["ts", "tsx", "js"];
 // const results = [];
 const REGEXP_EXTENSIONS = /\.(ts|tsx|js)$/;
-let rootPath = path.resolve("src");
+const rootPath = path.resolve("src");
 
 const EXPORT = "Export";
 const IMPORT = "Import";
@@ -41,7 +41,7 @@ const getFiles = () => {
 const getExportFiles = () => {
   const importFileNames = [];
   const exportFileNames = [];
-  const tsconfigOptionsPaths = config.compilerOptions.paths;
+  const tsconfigOptionsPaths = config?.compilerOptions?.paths;
   const allFiles = getFiles();
 
   const exportAllFiles = [];
@@ -75,9 +75,10 @@ const getExportFiles = () => {
       const program = tsESTree.parse(data, { jsx: true });
 
       program.body.forEach((el) => {
+        //???? el[OWN_PROPERTY.DECLARATION] or el.hasOwnProperty(OWN_PROPERTY.DECLARATION)
         if (
           el.type.startsWith(EXPORT) &&
-          el.hasOwnProperty(OWN_PROPERTY.DECLARATION)
+          el[OWN_PROPERTY.DECLARATION]
         ) {
           if (el?.declaration?.name) {
             //???
@@ -115,6 +116,11 @@ const getExportFiles = () => {
                 name: exportedFile.local.name,
                 path: file,
               });
+            } else if (exportedFile.local.name === DEFAULT) {
+              exportFileNames.push({
+                name: exportedFile.exported.name,
+                path: file,
+              });
             } else if (exportedFile.exported.name === DEFAULT) {
               exportFileNames.push({
                 name: exportedFile.local.name,
@@ -144,7 +150,7 @@ const getExportFiles = () => {
 
           //if our import is using tsconfig path then here we will replace the path
           const pathFromTsconfigPaths =
-            tsconfigOptionsPaths[`${el.source.value}`];
+            tsconfigOptionsPaths?.[`${el.source.value}`];
           if (pathFromTsconfigPaths) {
             importFromPath = path.resolve(
               path.dirname(file),

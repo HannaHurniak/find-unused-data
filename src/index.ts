@@ -5,6 +5,8 @@ import { a, b } from "components/all";
 import { getWorkers } from "./components";
 import { ConnectionIdData, Comment, VIDEO_SOURCES } from './constants/interface';
 
+import { Button } from './components/account';
+
 getWorkers();
 const day = new Date();
 console.log(FUNCTIONS_NAME);
