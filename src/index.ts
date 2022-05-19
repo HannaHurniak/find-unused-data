@@ -7,6 +7,8 @@ import { ConnectionIdData, Comment, VIDEO_SOURCES } from './constants/interface'
 
 import { Button } from './components/account';
 
+import { Last, LAST } from './components/last';
+
 getWorkers();
 const day = new Date();
 console.log(FUNCTIONS_NAME);
