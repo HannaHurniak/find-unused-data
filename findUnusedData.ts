@@ -208,13 +208,6 @@ const getImportedFiles = (allProjectFiles) => {
           let pathFromTsconfigPaths =
             tsconfigOptionsPaths?.[`${el?.source?.value}`];
 
-          //if was import from file where was export from another file
-          filesWithSeveralExports.forEach((el) => {
-            if (importFromPath.endsWith(el.sourceValue)) {
-              importFromPath = el.path;
-            }
-          });
-
           //to check if it is an absolute path or not
           if (
             tsconfigOptionsBaseUrl &&
@@ -259,6 +252,16 @@ const getImportedFiles = (allProjectFiles) => {
           }
 
           el.specifiers.forEach((importedFile) => {
+            //if was import from file where was export from another file
+            filesWithSeveralExports.forEach((el) => {
+              if (
+                importFromPath.endsWith(el.sourceValue) &&
+                importedFile.local.name === el.name
+              ) {
+                importFromPath = el.path;
+              }
+            });
+
             if (
               importedFile.local.name &&
               !importedFile[OWN_PROPERTY.IMPORTED]

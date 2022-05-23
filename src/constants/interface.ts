@@ -41,3 +41,15 @@ export type Point = {
   x: number;
   y: number;
 };
+
+export const SUPPORT_CHANNEL_INPUT_CONFIG = {
+  1: {
+    label: 'Specific Email Address:'
+  },
+  2: {
+    label: 'Slack Channel Name:'
+  },
+  3: {
+    label: 'Ticket System URL:'
+  }
+};
