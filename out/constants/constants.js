@@ -4,3 +4,6 @@ export const TIMEOUT_USER = 3000;
 export const INTRODUCTION = 'INTRODUCTION';
 export const currentMoment = new Date().getTime();
 export const DAY = 'Monday';
+const HANNA = 'HANNA';
+export { HANNA as default };
+export const ANNA = 'ANNA';

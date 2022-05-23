@@ -7,8 +7,10 @@
     "moduleResolution": "node",
     "baseUrl": "src",
     "paths": {
-      "func": ["utils/functions/functions.ts"],
-      "orange": ["components/card/apelsin.ts"]
+      "@func": ["utils/functions/functions.ts"],
+      "orange": ["components/card/apelsin.ts"],
+      "last/*": ["components/last/*"],
+      "ppp/*": ["components/account/*"]
     }
   },
   "include": ["src/**/*"],

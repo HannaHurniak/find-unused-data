@@ -6,7 +6,7 @@ const config = require("./tsconfig.json");
 
 // const EXTENSIONS = ["ts", "tsx", "js"];
 // const results = [];
-const REGEXP_EXTENSIONS = /\.(ts|tsx|js)$/;
+const REGEXP_EXTENSIONS = /\.(ts|tsx|js|jsx)$/;
 const rootPath = path.resolve("src");
 
 const EXPORT = "Export";
@@ -26,6 +26,7 @@ const getFiles = () => {
 
   while (files.length) {
     const currentPath = files.shift();
+
     fs.readdirSync(currentPath, { withFileTypes: true }).forEach((file) => {
       if (file.isFile() && REGEXP_EXTENSIONS.test(file.name)) {
         results.push(path.resolve(currentPath, file.name));
@@ -34,22 +35,15 @@ const getFiles = () => {
       }
     });
   }
-
+  //will return the array of strings where string is a full path for every single file in the project
   return results;
 };
 
-const getExportFiles = () => {
-  const importFileNames = [];
-  const exportFileNames = [];
-  const tsconfigOptionsPaths = config?.compilerOptions?.paths;
-  const tsconfigOptionsBaseUrl = config?.compilerOptions?.baseUrl;
-  const allFiles = getFiles();
-
+const getExportAllFiles = (allProjectFiles) => {
   const exportAllFiles = [];
 
-  allFiles.forEach((file) => {
+  allProjectFiles.forEach((file) => {
     const data = fs.readFileSync(file, "utf8");
-
     const program = tsESTree.parse(data, { jsx: true });
 
     program.body.forEach((el) => {
@@ -58,109 +52,147 @@ const getExportFiles = () => {
           path.dirname(file),
           el.source.value
         );
-        const [pathWithAllImport] = allFiles.filter(
+        const [pathWithAllImport] = allProjectFiles.filter(
           (path) => path.indexOf(exportAllFromPath) !== -1
         );
         exportAllFiles.push({
-          pathWhereAllExport: file,
-          pathFromAllExport: pathWithAllImport,
+          exportAllFromPath: pathWithAllImport,
         });
       }
     });
   });
 
-  try {
-    allFiles.forEach((file) => {
-      const data = fs.readFileSync(file, "utf8");
+  return exportAllFiles;
+};
 
+const handleExportedFileWithDeclaration = (el, filePath) => {
+  const exportedFiles = [];
+
+  if (el?.declaration?.name) {
+    //for React component
+    exportedFiles.push({
+      name: el.declaration.name,
+      path: filePath,
+      isFirstExport: !el?.source?.value,
+    });
+  } else if (el?.declaration?.id?.name) {
+    //for functions declaration, for Classes
+    exportedFiles.push({
+      name: el.declaration.id.name,
+      path: filePath,
+    });
+  } else if (el?.id?.name) {
+    //????
+    exportedFiles.push({
+      name: el.id.name,
+      path: filePath,
+    });
+  } else if (el?.declaration?.declarations) {
+    // for multiple export. also for constants
+    // example: export const one, two, three.
+    // export const NAME = 'Eva' or export const MONTH = ['Jan', 'Feb', 'Mar']
+    el.declaration.declarations.forEach((exportedFile) => {
+      exportedFiles.push({
+        name: exportedFile.id.name,
+        path: filePath,
+      });
+    });
+  }
+
+  return exportedFiles;
+};
+
+const handleExportedFileWithSpecifiers = (el, file) => {
+  const exportedFiles = [];
+
+  el.specifiers.forEach((exportedFile) => {
+    const firstPathWithExport = el?.source?.value
+      ? path.resolve(path.dirname(file), el.source.value)
+      : "";
+    const sourceValue = el?.source?.value.replace(/(\.\/|\.\.\/)/gi, "");
+
+    if (exportedFile.local.name === exportedFile.exported.name) {
+      //for multiple export. example: export { sayHi, sayBuy }
+      exportedFiles.push({
+        name: exportedFile.local.name,
+        path: file,
+        sourceValue,
+        isFirstExport: !el?.source?.value,
+        firstPathWithExport: firstPathWithExport,
+      });
+    } else if (exportedFile.exported.name === DEFAULT) {
+      // for variable when we do export as default. example: export { name as default }
+      exportedFiles.push({
+        name: exportedFile.local.name,
+        path: file,
+        sourceValue,
+        isFirstExport: !el?.source?.value,
+        firstPathWithExport: firstPathWithExport,
+      });
+    } else {
+      // when we change name for variable. example: export { name as name1 };
+      exportedFiles.push({
+        name: exportedFile.exported.name,
+        path: file,
+        sourceValue,
+        isFirstExport: !el?.source?.value,
+        firstPathWithExport: firstPathWithExport,
+      });
+    }
+  });
+
+  return exportedFiles;
+};
+
+const getExportedFiles = (allProjectFiles) => {
+  const exportedFiles = [];
+  //do we need try/catch here?
+  try {
+    allProjectFiles.forEach((file) => {
+      const data = fs.readFileSync(file, "utf8");
       const program = tsESTree.parse(data, { jsx: true });
 
       program.body.forEach((el) => {
-        const exportedFileFromPath = file;
-
         if (el.type.startsWith(EXPORT) && el[OWN_PROPERTY.DECLARATION]) {
-          if (el?.declaration?.name) {
-            exportFileNames.push({
-              name: el.declaration.name,
-              path: exportedFileFromPath,
-              sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-              isFirstExport: el?.source?.value ? false : true,
-            });
-          } else if (el?.declaration?.id?.name) {
-            exportFileNames.push({
-              name: el.declaration.id.name,
-              path: exportedFileFromPath,
-              sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-              isFirstExport: el?.source?.value ? false : true,
-            });
-          } else if (el?.id?.name) {
-            exportFileNames.push({
-              name: el.id.name,
-              path: exportedFileFromPath,
-              sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-              isFirstExport: el?.source?.value ? false : true,
-            });
-          } else if (el?.declaration?.declarations) {
-            el.declaration.declarations.forEach((exportedFile) => {
-              exportFileNames.push({
-                name: exportedFile.id.name,
-                path: exportedFileFromPath,
-                sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-                isFirstExport: el?.source?.value ? false : true,
-              });
-            });
-          }
-        }
+          const results = handleExportedFileWithDeclaration(el, file);
 
-        if (el.type.startsWith(EXPORT) && el[OWN_PROPERTY.SPECIFIERS]) {
-          el.specifiers.forEach((exportedFile) => {
-            const firstPathWithExport = el?.source?.value
-              ? path.resolve(
-                  path.dirname(exportedFileFromPath),
-                  el.source.value
-                )
-              : "";
-            if (exportedFile.local.name === exportedFile.exported.name) {
-              exportFileNames.push({
-                name: exportedFile.local.name,
-                path: exportedFileFromPath,
-                sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-                isFirstExport: el?.source?.value ? false : true,
-                firstPathWithExport: firstPathWithExport,
-              });
-            } else if (exportedFile.exported.name === DEFAULT) {
-              exportFileNames.push({
-                name: exportedFile.local.name,
-                path: exportedFileFromPath,
-                sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-                isFirstExport: el?.source?.value ? false : true,
-                firstPathWithExport: firstPathWithExport,
-              });
-            } else {
-              exportFileNames.push({
-                name: exportedFile.exported.name,
-                path: exportedFileFromPath,
-                sourceValue: el?.source?.value.replace(/(\.\/|\.\.\/)/gi, ""),
-                isFirstExport: el?.source?.value ? false : true,
-                firstPathWithExport: firstPathWithExport,
-              });
-            }
-          });
+          exportedFiles.push(...results);
+        } else if (el.type.startsWith(EXPORT) && el[OWN_PROPERTY.SPECIFIERS]) {
+          const results = handleExportedFileWithSpecifiers(el, file);
+
+          exportedFiles.push(...results);
         }
 
         if (el.type === TYPE_DECLARATION) {
-          exportFileNames.push({
+          exportedFiles.push({
             name: el.id.name,
-            path: exportedFileFromPath,
+            path: file,
           });
         }
       });
     });
+  } catch (err) {
+    console.error(err);
+  }
 
-    allFiles.forEach((file) => {
+  return exportedFiles;
+};
+
+const getImportedFiles = (allProjectFiles) => {
+  const importedFiles = [];
+  const exportedFiles = getExportedFiles(allProjectFiles);
+  const exportAllFiles = getExportAllFiles(allProjectFiles);
+
+  let tsconfigOptionsPaths = config?.compilerOptions?.paths;
+  const tsconfigOptionsBaseUrl = config?.compilerOptions?.baseUrl;
+
+  try {
+    allProjectFiles.forEach((file) => {
       const data = fs.readFileSync(file, "utf8");
       const program = tsESTree.parse(data, { jsx: true });
-      const res = exportFileNames.filter((el) => el.isFirstExport === false);
+      const filesWithSeveralExports = exportedFiles.filter(
+        (el) => el.isFirstExport === false
+      );
 
       program.body.forEach((el) => {
         if (el.type.startsWith(IMPORT) && el?.source?.value) {
@@ -169,14 +201,15 @@ const getExportFiles = () => {
             el.source.value
           );
 
-          const pathFromTsconfigPaths =
-            tsconfigOptionsPaths?.[`${el.source.value}`];
-          const isStartsWith =
+          const isStartsWithDot =
             el?.source?.value.startsWith("./") ||
             el?.source?.value.startsWith("../");
 
+          let pathFromTsconfigPaths =
+            tsconfigOptionsPaths?.[`${el.source.value}`];
+
           //if was import from file where was export from another file
-          res.forEach((el) => {
+          filesWithSeveralExports.forEach((el) => {
             if (importFromPath.endsWith(el.sourceValue)) {
               importFromPath = el.path;
             }
@@ -185,7 +218,7 @@ const getExportFiles = () => {
           //to check if it is an absolute path or not
           if (
             tsconfigOptionsBaseUrl &&
-            !isStartsWith &&
+            !isStartsWithDot &&
             !pathFromTsconfigPaths
           ) {
             importFromPath = path.resolve(rootPath, el.source.value);
@@ -199,13 +232,33 @@ const getExportFiles = () => {
             );
           }
 
-          //here we replace path of the import file if it is importing from all export
+          //to replace path of the import file if it is importing from all export
           if (exportAllFiles.length) {
             exportAllFiles.forEach((el) => {
-              if (el.pathFromAllExport.indexOf(importFromPath) !== -1) {
-                importFromPath = el.pathFromAllExport;
+              if (el.exportAllFromPath.indexOf(importFromPath) !== -1) {
+                importFromPath = el.exportAllFromPath;
               }
             });
+          }
+
+          //if our path look like 
+          //tsconfig {compilerOptions: {paths: {"last/*": ["components/last/*"]}}}
+          if (tsconfigOptionsPaths && !isStartsWithDot) {
+            const REG = /.+?(?=\/)/;
+            const keyInPaths =
+              tsconfigOptionsPaths[el.source.value.match(REG) + "/*"];
+            if (keyInPaths) {
+              const indexOfPath = el.source.value.indexOf('/')
+              const nameOfPath = el.source.value.slice(indexOfPath + 1)
+              const pathFrom = path.resolve(
+                rootPath,
+                keyInPaths[0].replace(/(\/\*|\/\*\*)$/gi, "")
+              );
+              importFromPath = path.resolve(
+                pathFrom,
+                nameOfPath
+              );
+            }
           }
 
           el.specifiers.forEach((importedFile) => {
@@ -213,21 +266,21 @@ const getExportFiles = () => {
               importedFile.local.name &&
               !importedFile[OWN_PROPERTY.IMPORTED]
             ) {
-              importFileNames.push({
+              importedFiles.push({
                 name: importedFile.local.name,
                 path: file,
                 importFrom: importFromPath,
                 el: el.source.value,
               });
             } else if (importedFile.local.name === importedFile.imported.name) {
-              importFileNames.push({
+              importedFiles.push({
                 name: importedFile.local.name,
                 path: file,
                 importFrom: importFromPath,
                 el: el.source.value,
               });
             } else if (importedFile.local.name !== importedFile.imported.name) {
-              importFileNames.push({
+              importedFiles.push({
                 name: importedFile.imported.name,
                 path: file,
                 importFrom: importFromPath,
@@ -237,9 +290,9 @@ const getExportFiles = () => {
           });
         }
 
-        //for type typescript
+        //for type
         // if (el.type.startsWith(IMPORT) && !el?.source?.value) {
-        //   importFileNames.push({
+        //   importedFiles.push({
         //     name: el.local.name,
         //     path: file,
         //     importFrom: file,
@@ -251,29 +304,19 @@ const getExportFiles = () => {
     console.error(err);
   }
 
-  // const updatedImportFiles = importFileNames.map((importFile) => {
-  //   const res = exportFileNames.filter(
-  //     (exportFile) =>
-  //       exportFile.path.indexOf(importFile.importFrom) !== -1 &&
-  //       importFile.name === exportFile.name
-  //   );
-  //   if (!res.length) {
-  //     return importFile;
-  //   } else {
-  //     return {
-  //       ...importFile,
-  //       rootExportPath: res[0].firstPathWithExport,
-  //     };
-  //   }
-  // });
-  // console.log("importFileNames", exportFileNames);
-  // console.log('updatedImportFiles', updatedImportFiles)
+  return importedFiles;
+};
 
-  const exportedFilesWithFirstPath = exportFileNames.filter(
+const getExportFiles = () => {
+  const allProjectFiles = getFiles();
+  const exportedFiles = getExportedFiles(allProjectFiles);
+  const importedFiles = getImportedFiles(allProjectFiles);
+
+  const exportedFilesWithFirstPath = exportedFiles.filter(
     (el) => el.firstPathWithExport
   );
-  // console.log("exportedFilesWithFirstPath", exportedFilesWithFirstPath);
-  const updatedExportedFiles = exportFileNames.filter(
+
+  const updatedExportedFiles = exportedFiles.filter(
     (exportFile) =>
       !exportedFilesWithFirstPath.some((file) => {
         return (
@@ -282,11 +325,11 @@ const getExportFiles = () => {
         );
       })
   );
-  // console.log('updatedExportedFiles', updatedExportedFiles)
+
   return updatedExportedFiles
     .filter(
       (exportFile) =>
-        !importFileNames.some((importFile) => {
+        !importedFiles.some((importFile) => {
           return (
             importFile.name === exportFile.name &&
             (exportFile.path.replace(/(.ts|.tsx)$/gi, "") ===
