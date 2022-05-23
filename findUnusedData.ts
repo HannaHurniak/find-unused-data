@@ -7,8 +7,11 @@ const config = require("./tsconfig.json");
 // const EXTENSIONS = ["ts", "tsx", "js"];
 // const results = [];
 const REGEXP_EXTENSIONS = /\.(ts|tsx|js|jsx)$/;
+const REGEXP_INDEX_FILES =
+  /(\\index\.ts|\\index\.tsx|\\index\.js|\\index\.jsx)$/gi;
+const REGEXP_START_STRING = /(^\.\/|^\.\.\/)/gi;
 const rootPath = path.resolve("src");
-
+const CHARACTER_ENCODING = "utf8";
 const EXPORT = "Export";
 const IMPORT = "Import";
 const EXPORT_ALL = "ExportAllDeclaration";
@@ -43,7 +46,7 @@ const getExportAllFiles = (allProjectFiles) => {
   const exportAllFiles = [];
 
   allProjectFiles.forEach((file) => {
-    const data = fs.readFileSync(file, "utf8");
+    const data = fs.readFileSync(file, CHARACTER_ENCODING);
     const program = tsESTree.parse(data, { jsx: true });
 
     program.body.forEach((el) => {
@@ -80,12 +83,7 @@ const handleExportedFileWithDeclaration = (el, filePath) => {
     exportedFiles.push({
       name: el.declaration.id.name,
       path: filePath,
-    });
-  } else if (el?.id?.name) {
-    //????
-    exportedFiles.push({
-      name: el.id.name,
-      path: filePath,
+      isFirstExport: !el?.source?.value,
     });
   } else if (el?.declaration?.declarations) {
     // for multiple export. also for constants
@@ -95,6 +93,7 @@ const handleExportedFileWithDeclaration = (el, filePath) => {
       exportedFiles.push({
         name: exportedFile.id.name,
         path: filePath,
+        isFirstExport: !el?.source?.value,
       });
     });
   }
@@ -109,7 +108,7 @@ const handleExportedFileWithSpecifiers = (el, file) => {
     const firstPathWithExport = el?.source?.value
       ? path.resolve(path.dirname(file), el.source.value)
       : "";
-    const sourceValue = el?.source?.value.replace(/(\.\/|\.\.\/)/gi, "");
+    const sourceValue = el?.source?.value.replace(REGEXP_START_STRING, "");
 
     if (exportedFile.local.name === exportedFile.exported.name) {
       //for multiple export. example: export { sayHi, sayBuy }
@@ -149,7 +148,7 @@ const getExportedFiles = (allProjectFiles) => {
   //do we need try/catch here?
   try {
     allProjectFiles.forEach((file) => {
-      const data = fs.readFileSync(file, "utf8");
+      const data = fs.readFileSync(file, CHARACTER_ENCODING);
       const program = tsESTree.parse(data, { jsx: true });
 
       program.body.forEach((el) => {
@@ -188,7 +187,7 @@ const getImportedFiles = (allProjectFiles) => {
 
   try {
     allProjectFiles.forEach((file) => {
-      const data = fs.readFileSync(file, "utf8");
+      const data = fs.readFileSync(file, CHARACTER_ENCODING);
       const program = tsESTree.parse(data, { jsx: true });
       const filesWithSeveralExports = exportedFiles.filter(
         (el) => el.isFirstExport === false
@@ -204,9 +203,10 @@ const getImportedFiles = (allProjectFiles) => {
           const isStartsWithDot =
             el?.source?.value.startsWith("./") ||
             el?.source?.value.startsWith("../");
+          // const isStartsWithDot = REGEXP_START_STRING.test(el?.source?.value);
 
           let pathFromTsconfigPaths =
-            tsconfigOptionsPaths?.[`${el.source.value}`];
+            tsconfigOptionsPaths?.[`${el?.source?.value}`];
 
           //if was import from file where was export from another file
           filesWithSeveralExports.forEach((el) => {
@@ -224,7 +224,7 @@ const getImportedFiles = (allProjectFiles) => {
             importFromPath = path.resolve(rootPath, el.source.value);
           }
 
-          //if our import is using tsconfig path then here we will replace the path
+          //if our import uses tsconfig path then we will replace the path
           if (pathFromTsconfigPaths) {
             importFromPath = path.resolve(
               path.dirname(file),
@@ -241,23 +241,20 @@ const getImportedFiles = (allProjectFiles) => {
             });
           }
 
-          //if our path look like 
+          //if our path look like
           //tsconfig {compilerOptions: {paths: {"last/*": ["components/last/*"]}}}
           if (tsconfigOptionsPaths && !isStartsWithDot) {
-            const REG = /.+?(?=\/)/;
+            const REGEXP = /.+?(?=\/)/;
             const keyInPaths =
-              tsconfigOptionsPaths[el.source.value.match(REG) + "/*"];
+              tsconfigOptionsPaths[el.source.value.match(REGEXP) + "/*"];
             if (keyInPaths) {
-              const indexOfPath = el.source.value.indexOf('/')
-              const nameOfPath = el.source.value.slice(indexOfPath + 1)
+              const indexOfSymbol = el.source.value.indexOf("/");
+              const nameOfPath = el.source.value.slice(indexOfSymbol + 1);
               const pathFrom = path.resolve(
                 rootPath,
                 keyInPaths[0].replace(/(\/\*|\/\*\*)$/gi, "")
               );
-              importFromPath = path.resolve(
-                pathFrom,
-                nameOfPath
-              );
+              importFromPath = path.resolve(pathFrom, nameOfPath);
             }
           }
 
@@ -270,34 +267,22 @@ const getImportedFiles = (allProjectFiles) => {
                 name: importedFile.local.name,
                 path: file,
                 importFrom: importFromPath,
-                el: el.source.value,
               });
             } else if (importedFile.local.name === importedFile.imported.name) {
               importedFiles.push({
                 name: importedFile.local.name,
                 path: file,
                 importFrom: importFromPath,
-                el: el.source.value,
               });
             } else if (importedFile.local.name !== importedFile.imported.name) {
               importedFiles.push({
                 name: importedFile.imported.name,
                 path: file,
                 importFrom: importFromPath,
-                el: el.source.value,
               });
             }
           });
         }
-
-        //for type
-        // if (el.type.startsWith(IMPORT) && !el?.source?.value) {
-        //   importedFiles.push({
-        //     name: el.local.name,
-        //     path: file,
-        //     importFrom: file,
-        //   });
-        // }
       });
     });
   } catch (err) {
@@ -312,13 +297,13 @@ const getExportFiles = () => {
   const exportedFiles = getExportedFiles(allProjectFiles);
   const importedFiles = getImportedFiles(allProjectFiles);
 
-  const exportedFilesWithFirstPath = exportedFiles.filter(
+  const exportedFilesWithFirstExport = exportedFiles.filter(
     (el) => el.firstPathWithExport
   );
 
   const updatedExportedFiles = exportedFiles.filter(
     (exportFile) =>
-      !exportedFilesWithFirstPath.some((file) => {
+      !exportedFilesWithFirstExport.some((file) => {
         return (
           file.name === exportFile.name &&
           exportFile.path.indexOf(file.firstPathWithExport) !== -1
@@ -332,11 +317,13 @@ const getExportFiles = () => {
         !importedFiles.some((importFile) => {
           return (
             importFile.name === exportFile.name &&
-            (exportFile.path.replace(/(.ts|.tsx)$/gi, "") ===
+            (exportFile.path.replace(REGEXP_EXTENSIONS, "") ===
               importFile.importFrom ||
               exportFile.path === importFile.importFrom ||
-              exportFile.path.replace(/(\\index\.ts|\\index\.tsx)/gi, "") ===
-                importFile.importFrom)
+              exportFile.path.replace(REGEXP_INDEX_FILES, "") ===
+                importFile.importFrom ||
+              (exportFile.isFirstExport === true &&
+                exportFile.path === importFile.path))
           );
         })
     )

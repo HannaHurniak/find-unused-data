@@ -36,3 +36,8 @@ export enum VIDEO_SOURCES {
 }
 
 export type LineNumbersType = 'on' | 'off' | 'relative' | 'interval' | ((lineNumber: number) => string);
+
+export type Point = {
+  x: number;
+  y: number;
+};
