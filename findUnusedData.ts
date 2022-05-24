@@ -23,6 +23,16 @@ const OWN_PROPERTY = {
   IMPORTED: "imported",
 };
 
+const filesMap = new Map();
+
+const handleVariablesInFile = (file, name) => {
+  if (filesMap.get(file)) {
+    filesMap.set(file, [...filesMap.get(file), name])
+  } else {
+    filesMap.set(file, [name])
+  }
+}
+
 const getFiles = () => {
   const files = [rootPath];
   const results = [];
@@ -56,8 +66,19 @@ const getExportAllFiles = (allProjectFiles) => {
           el.source.value
         );
         const [pathWithAllImport] = allProjectFiles.filter(
-          (path) => path.indexOf(exportAllFromPath) !== -1
+          (path) => path.replace(REGEXP_EXTENSIONS, "") === exportAllFromPath
         );
+        // fs.statSync(exportAllFromPath, (error, stats) => {
+        //   if (error) {
+        //     console.log(error);
+        //   }
+        //   else {
+        //     console.log("Path is file:", stats.isFile());
+        //     console.log("Path is directory:", stats.isDirectory());
+        //   }
+        // })
+        // console.log('exportAllFromPath', exportAllFromPath)
+        // console.log('pathWithAllImport', pathWithAllImport)
         exportAllFiles.push({
           exportAllFromPath: pathWithAllImport,
         });
@@ -72,6 +93,8 @@ const handleExportedFileWithDeclaration = (el, filePath) => {
   const exportedFiles = [];
 
   if (el?.declaration?.name) {
+    handleVariablesInFile(filePath, el.declaration.name);
+
     //for React component
     exportedFiles.push({
       name: el.declaration.name,
@@ -79,6 +102,8 @@ const handleExportedFileWithDeclaration = (el, filePath) => {
       isFirstExport: !el?.source?.value,
     });
   } else if (el?.declaration?.id?.name) {
+    handleVariablesInFile(filePath, el.declaration.id.name);
+
     //for functions declaration, for Classes
     exportedFiles.push({
       name: el.declaration.id.name,
@@ -89,7 +114,10 @@ const handleExportedFileWithDeclaration = (el, filePath) => {
     // for multiple export. also for constants
     // example: export const one, two, three.
     // export const NAME = 'Eva' or export const MONTH = ['Jan', 'Feb', 'Mar']
+    
     el.declaration.declarations.forEach((exportedFile) => {
+      handleVariablesInFile(filePath, exportedFile.id.name);
+
       exportedFiles.push({
         name: exportedFile.id.name,
         path: filePath,
@@ -108,9 +136,12 @@ const handleExportedFileWithSpecifiers = (el, file) => {
     const firstPathWithExport = el?.source?.value
       ? path.resolve(path.dirname(file), el.source.value)
       : "";
+    //export { default as Button } from './acc';
     const sourceValue = el?.source?.value.replace(REGEXP_START_STRING, "");
 
     if (exportedFile.local.name === exportedFile.exported.name) {
+      handleVariablesInFile(file, exportedFile.local.name);
+
       //for multiple export. example: export { sayHi, sayBuy }
       exportedFiles.push({
         name: exportedFile.local.name,
@@ -120,6 +151,8 @@ const handleExportedFileWithSpecifiers = (el, file) => {
         firstPathWithExport: firstPathWithExport,
       });
     } else if (exportedFile.exported.name === DEFAULT) {
+      handleVariablesInFile(file, exportedFile.local.name);
+
       // for variable when we do export as default. example: export { name as default }
       exportedFiles.push({
         name: exportedFile.local.name,
@@ -129,6 +162,8 @@ const handleExportedFileWithSpecifiers = (el, file) => {
         firstPathWithExport: firstPathWithExport,
       });
     } else {
+      handleVariablesInFile(file, exportedFile.exported.name);
+
       // when we change name for variable. example: export { name as name1 };
       exportedFiles.push({
         name: exportedFile.exported.name,
@@ -195,6 +230,7 @@ const getImportedFiles = (allProjectFiles) => {
 
       program.body.forEach((el) => {
         if (el.type.startsWith(IMPORT) && el?.source?.value) {
+
           let importFromPath = path.resolve(
             path.dirname(file),
             el.source.value
@@ -225,30 +261,42 @@ const getImportedFiles = (allProjectFiles) => {
             );
           }
 
-          //to replace path of the import file if it is importing from all export
-          if (exportAllFiles.length) {
-            exportAllFiles.forEach((el) => {
-              if (el.exportAllFromPath.indexOf(importFromPath) !== -1) {
-                importFromPath = el.exportAllFromPath;
-              }
-            });
-          }
-
           //if our path look like
           //tsconfig {compilerOptions: {paths: {"last/*": ["components/last/*"]}}}
           if (tsconfigOptionsPaths && !isStartsWithDot) {
             const REGEXP = /.+?(?=\/)/;
             const keyInPaths =
               tsconfigOptionsPaths[el.source.value.match(REGEXP) + "/*"];
+            // console.log('keyInPaths', el.source.value.match(REGEXP))
             if (keyInPaths) {
               const indexOfSymbol = el.source.value.indexOf("/");
               const nameOfPath = el.source.value.slice(indexOfSymbol + 1);
               const pathFrom = path.resolve(
                 rootPath,
-                keyInPaths[0].replace(/(\/\*|\/\*\*)$/gi, "")
+                keyInPaths[0].replace(/(\/\*\*|\/\*)/gi, "")
               );
               importFromPath = path.resolve(pathFrom, nameOfPath);
             }
+          }
+
+          //to replace path of the import file if it is importing from all export
+          if (exportAllFiles.length) {
+            exportAllFiles.forEach((el) => {
+              // console.log('importFromPath', importFromPath)
+              if (el.exportAllFromPath.indexOf(importFromPath) !== -1) {
+                // console.log(path.dirname(__filename))
+                importFromPath = el.exportAllFromPath;
+              }
+              // if (el.exportAllFromPath === importFromPath + '.ts') {
+              //   importFromPath = el.exportAllFromPath;
+              // } else if (el.exportAllFromPath === importFromPath + '.tsx') {
+              //   importFromPath = el.exportAllFromPath;
+              // } else if (el.exportAllFromPath === importFromPath + '.js') {
+              //   importFromPath = el.exportAllFromPath;
+              // } else if (el.exportAllFromPath === importFromPath + '.jsx') {
+              //   importFromPath = el.exportAllFromPath;
+              // }
+            });
           }
 
           el.specifiers.forEach((importedFile) => {
@@ -313,7 +361,8 @@ const getExportFiles = () => {
         );
       })
   );
-
+  // console.log('filesMap', filesMap)
+  // console.log('importedFiles', exportedFiles)
   return updatedExportedFiles
     .filter(
       (exportFile) =>

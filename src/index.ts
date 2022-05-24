@@ -13,6 +13,8 @@ import { TEST } from 'last/last';
 
 import { User } from 'ppp/user';
 
+import { APELSIN } from '@/card';
+
 getWorkers();
 const day = new Date();
 console.log(FUNCTIONS_NAME);

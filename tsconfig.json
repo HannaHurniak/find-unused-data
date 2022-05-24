@@ -10,7 +10,8 @@
       "@func": ["utils/functions/functions.ts"],
       "orange": ["components/card/apelsin.ts"],
       "last/*": ["components/last/*"],
-      "ppp/*": ["components/account/*"]
+      "ppp/*": ["components/account/*"],
+      "@/*": ["components/card/*"]
     }
   },
   "include": ["src/**/*"],
