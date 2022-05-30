@@ -11,7 +11,8 @@
       "orange": ["components/card/apelsin.ts"],
       "last/*": ["components/last/*"],
       "ppp/*": ["components/account/*"],
-      "@/*": ["components/card/*"]
+      "@/*": ["components/card/*"],
+      "@cat/*": ["components/cat/*"]
     }
   },
   "include": ["src/**/*"],

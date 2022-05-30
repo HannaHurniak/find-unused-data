@@ -15,6 +15,8 @@ import { User } from 'ppp/user';
 
 import { APELSIN } from '@/card';
 
+import CAT from '@cat/cat';
+
 getWorkers();
 const day = new Date();
 console.log(FUNCTIONS_NAME);
