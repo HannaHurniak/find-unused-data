@@ -80,7 +80,6 @@ const getExportAllFiles = (allProjectFiles) => {
   const exportAllFiles = [];
 
   allProjectFiles.forEach((file) => {
-    try {
       const program = getProgram(file);
 
       program.body.forEach((el) => {
@@ -105,9 +104,6 @@ const getExportAllFiles = (allProjectFiles) => {
           });
         }
       });
-    } catch {
-      console.log("file", file);
-    }
   });
 
   return exportAllFiles;
@@ -263,8 +259,8 @@ const getPath = (path, name, exportAllFiles) => {
 
       if (result.includes(name)) {
         importFromPath = path + extension;
-      } else if (!result.includes(name)) {
-        //if we found path, but the file has several another export ot doesn't have needed name in the file
+      } else {
+        //if we found path, but the file has several another export or doesn't have needed name in the file
         findRootFile(path + extension);
       }
     } else {
@@ -281,7 +277,6 @@ const getFullPath = (file, importFrom, name, exportAllFiles) => {
   const isShortPath = importFrom === ".." || importFrom === ".";
   const isStartsWithDot =
     importFrom.startsWith("./") || importFrom.startsWith("../");
-  // const isEndsWithStyle = importFrom.endsWith(".styles") || importFrom.endsWith(".styled");
 
   if (importFrom.startsWith("~")) {
     const updatedPath = importFrom.replace(/\~\//, "");
@@ -293,6 +288,8 @@ const getFullPath = (file, importFrom, name, exportAllFiles) => {
     importFromPath = path.resolve(path.dirname(file), importFrom);
     importFromPath = getPath(importFromPath, name, exportAllFiles);
   } else if (!isStartsWithDot) {
+    //'~/app/shared/hooks/use-location-keep-query-params/useLocationKeepQueryParams'
+
     //for absolute path
     const tsconfigOptionsPaths = config.compilerOptions.paths;
 
@@ -401,6 +398,7 @@ const getImportedFiles = (allProjectFiles) => {
               importedFile.type === IMPORT_NAMESPACE &&
               !el.source.value.endsWith(".scss")
             ) {
+              //for files .styles.ts or .styled.tsx when import *
               const importFromPathTS =
                 path.resolve(path.dirname(file), el.source.value) + ".ts";
               const importFromPathTSX =
@@ -414,10 +412,12 @@ const getImportedFiles = (allProjectFiles) => {
                     name: variable,
                     path: file,
                     el: el.source.value,
-                    importFrom: resultsTS ? importFromPathTS : importFromPathTSX,
+                    importFrom: resultsTS
+                      ? importFromPathTS
+                      : importFromPathTSX,
                   });
                 });
-              } 
+              }
             }
           });
         }
@@ -470,4 +470,9 @@ const getExportFiles = () => {
     .map((file) => `${file.type ?? ""} ${file.name} in: ${file.path}`);
 };
 
-console.log("getExportFiles", getExportFiles(), 'length', getExportFiles().length);
+console.log(
+  "getExportFiles",
+  getExportFiles(),
+  "length",
+  getExportFiles().length
+);

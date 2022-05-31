@@ -5,14 +5,15 @@
     "outDir": "out",
     "jsx": "react",
     "moduleResolution": "node",
-    "baseUrl": "src",
+    "baseUrl": ".",
     "paths": {
       "@func": ["utils/functions/functions.ts"],
       "orange": ["components/card/apelsin.ts"],
       "last/*": ["components/last/*"],
       "ppp/*": ["components/account/*"],
       "@/*": ["components/card/*"],
-      "@cat/*": ["components/cat/*"]
+      "@cat/*": ["components/cat/*"],
+      "~/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],
