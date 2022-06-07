@@ -5,7 +5,7 @@
     "outDir": "out",
     "jsx": "react",
     "moduleResolution": "node",
-    "baseUrl": ".",
+    "baseUrl": "src",
     "paths": {
       "@func": ["utils/functions/functions.ts"],
       "orange": ["components/card/apelsin.ts"],

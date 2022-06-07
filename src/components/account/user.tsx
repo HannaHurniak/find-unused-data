@@ -1,5 +1,5 @@
 import React from 'react';
-import { TIMEOUT, TIMEOUT_COMMENTS, TIMEOUT_USER } from '../../constants/constants';
+import { TIMEOUT, TIMEOUT_COMMENTS, TIMEOUT_USER, ANNA } from '../../constants/constants';
 import { d } from '../all/all';
 
 

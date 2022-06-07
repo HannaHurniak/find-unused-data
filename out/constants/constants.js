@@ -7,3 +7,4 @@ export const DAY = 'Monday';
 const HANNA = 'HANNA';
 export { HANNA as default };
 export const ANNA = 'ANNA';
+export const CONSTANT = 'const';
