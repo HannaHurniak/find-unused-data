@@ -52,14 +52,6 @@ const handleVariablesInFile = (file, object) => {
   if (filesMap.get(file)) {
     const result = filesMap.get(file);
     const res = fn(result.from, object.from);
-    if (
-      file ===
-      "C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\workspace\\auth.tsx"
-    ) {
-      //   console.log("object.from", object.from);
-      //   console.log("result.from", result.from);
-      //   console.log("res", res);
-    }
 
     filesMap.set(file, {
       children: result.children?.concat(object.children),
@@ -229,9 +221,37 @@ const handleFiles = () => {
       ) {
         const name = defineNameOfExportedVariable(element);
         handleVariablesInFile(file, {
-          ownExport: [{ type: element.type, name, isVerified: false }],
+          ownExport: [
+            {
+              type: element.type,
+              name,
+              isVerified: false,
+              isFirstExport: true,
+            },
+          ],
           children: [],
           from: {},
+        });
+      } else if (
+        element.type.startsWith(EXPORT) &&
+        element.type !== EXPORT_ALL &&
+        pathFrom
+      ) {
+        //TODO: fix this moment
+        const absoluteFilesPath = defineFullPathForFile(
+          filesPath,
+          allProjectFiles
+        );
+
+        element.specifiers.forEach((exportedFile) => {
+          //TODO: if my export has a path from was export
+          // const name = defineNameOfExportedVariable(element);
+          handleVariablesInFile(file, {
+            ownExport: [],
+            children: [absoluteFilesPath],
+            // from: { [absoluteFilesPath]: [{ name, type: exportedFile.type }] },
+            from: {},
+          });
         });
       } else if (
         element.type.startsWith(IMPORT) &&
@@ -250,7 +270,7 @@ const handleFiles = () => {
           handleVariablesInFile(file, {
             ownExport: [],
             children: [],
-            from: { [absoluteFilesPath]: [{ name }] },
+            from: { [absoluteFilesPath]: [{ name, type: importedFile.type }] },
           });
         });
       }
@@ -261,65 +281,65 @@ const handleFiles = () => {
 };
 
 const getExportFiles = () => {
-  allProjectFiles.forEach((file) => {
+  //"C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts"
+  //"C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\index.ts"
+  ["C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\index.ts"].forEach((file) => {
     const data = filesMap.get(file);
     const result = Object.entries(data.from);
+    //TODO: what with this function
+    const findRootExportFile = (file, arrWithResult, arr) => {
+      const arrWithOwnExport = [...arr];
+      const updatedData = arrWithResult.ownExport.map((importedProp) => {
+        return arrWithOwnExport.some(
+          (prop) => importedProp.name === prop.name && !importedProp.isVerified
+        )
+          ? { ...importedProp, isVerified: true }
+          : importedProp;
+      });
+      filesMap.set(file, {
+        children: [...arrWithResult.children],
+        ownExport: updatedData,
+        from: { ...arrWithResult.from },
+      });
+      const withExtraExport = arrWithOwnExport.filter((variable) => {
+        return updatedData.some(
+          (updatedVariable) =>
+            updatedVariable.name === variable.name &&
+            !updatedVariable.isVerified
+        );
+      });
+      // console.log('arrWithOwnExport', arrWithOwnExport)
+      // console.log('arrWithResult', arrWithResult)
+      // console.log("updatedData", updatedData);
+      // console.log("withExtraExport", withExtraExport);
+    };
 
     if (result.length) {
       result.forEach(([path, ownProperties]) => {
+        console.log('path', path)
+        console.log('ownProperties', ownProperties)
+        //TODO: ownProperties include only imported files ({name, type??})
         //TODO: refactoring code
         //TODO: this path should be deleted later when we add package.json
         if (path) {
-          //   const allOwnProperties = filesMap.get(path).ownExport;
           const fileFromDidExport = filesMap.get(path);
-          //   const res = ownProperties.filter((el) => {
-          //     return allOwnProperties.find((prop) => prop.name === el.name);
-          //   });
-          if (fileFromDidExport.ownExport.length) {
-            //TODO: ??????????
-            const updatedData = fileFromDidExport.ownExport.map(
-              (importedProp) => {
-                const result = ownProperties.filter((prop) => {
-                  return (
-                    importedProp.name === prop.name && !importedProp.isVerified
-                  );
-                });
-                if (result.length) {
-                  return { ...importedProp, isVerified: true };
-                } else {
-                  return importedProp;
-                }
-              }
-            );
+          const allExportInFile = fileFromDidExport.ownExport;
+          //TODO: but what is ownExport don't include
 
-            filesMap.set(path, {
-              children: [...fileFromDidExport.children],
-              ownExport: updatedData,
-              from: { ...fileFromDidExport.from },
-            });
+          ownProperties.forEach((prop) => {
+            
+          })
+
+          //'C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts'
+          if (allExportInFile.length) {
+            //TODO: ??????????
+            findRootExportFile(path, fileFromDidExport, ownProperties);
           } else {
             filesMap.get(path).children.forEach((file) => {
-              const res = filesMap.get(file);
+              const result = filesMap.get(file);
 
-              if (res.ownExport.length) {
-                const updatedData = res.ownExport.map((importedProp) => {
-                  const result = ownProperties.filter((prop) => {
-                    return (
-                      importedProp.name === prop.name &&
-                      !importedProp.isVerified
-                    );
-                  });
-                  if (result.length) {
-                    return { ...importedProp, isVerified: true };
-                  } else {
-                    return importedProp;
-                  }
-                });
-                filesMap.set(file, {
-                  children: [...res.children],
-                  ownExport: updatedData,
-                  from: { ...res.from },
-                });
+              if (result.ownExport.length) {
+                findRootExportFile(file, result, ownProperties);
               }
             });
           }
@@ -331,15 +351,12 @@ const getExportFiles = () => {
   for (let [key, value] of filesMap) {
     value.ownExport.forEach((variable) => {
       if (!variable.isVerified) {
-        console.log(`${variable.name} in ${key}`);
+        // console.log(`${variable.name} in ${key}`);
       }
     });
   }
+
   //   return filesMap;
-  //   return filesMap.get(
-  //     "C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\constants\\constants.ts"
-  //   );
-  //   console.log('!!!', filesMap.get('C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\all\\all.ts'))
 };
 
 const searchUnusedLibraries = () => {
@@ -357,9 +374,9 @@ console.log(
   getExportFiles()
 );
 
-// console.log(
-//   "!!!!",
-//   filesMap.get(
-//     "C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\workspace\\auth.tsx"
-//   )
-// );
+console.log(
+  "!!!!",
+  filesMap.get(
+    "C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts"
+  ).from
+);
