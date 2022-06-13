@@ -5,11 +5,7 @@ const tsESTree = require("@typescript-eslint/typescript-estree");
 const config = require("./tsconfig.json");
 const package = require("./package.json");
 
-// const EXTENSIONS = ["ts", "tsx", "js"];
-// const results = [];
 const REGEXP_EXTENSIONS = /\.(ts|tsx|js|jsx|d\.ts)$/;
-const REGEXP_INDEX_FILES =
-  /(\\index\.ts|\\index\.tsx|\\index\.js|\\index\.jsx)$/gi;
 const REGEXP_START_STRING = /(^\.\/|^\.\.\/)/gi;
 const rootPath = path.resolve("src");
 const CHARACTER_ENCODING = "utf8";
@@ -23,17 +19,13 @@ const OWN_PROPERTY = {
   SPECIFIERS: "specifiers",
   IMPORTED: "imported",
 };
-const TYPE_DECLARATION = {
-  ["TSInterfaceDeclaration"]: "Interface",
-  ["TSEnumDeclaration"]: "Enum",
-  ["TSTypeAliasDeclaration"]: "Type",
-};
 
-const UNUSED_LIBRARIES = {};
+const UNUSED_LIBRARIES = package.dependencies;
 
 const filesMap = new Map();
+
 //TODO: refactoring here
-const fn = (obj1, obj2) => {
+const updateImportedFiles = (obj1, obj2) => {
   return Object.keys(obj2).reduce(
     (prevValue, key) => {
       if (prevValue[key]) {
@@ -41,7 +33,6 @@ const fn = (obj1, obj2) => {
       } else {
         prevValue[key] = obj2[key];
       }
-
       return prevValue;
     },
     { ...obj1 }
@@ -49,9 +40,10 @@ const fn = (obj1, obj2) => {
 };
 
 const handleVariablesInFile = (file, object) => {
-  if (filesMap.get(file)) {
-    const result = filesMap.get(file);
-    const res = fn(result.from, object.from);
+  const result = filesMap.get(file);
+  //TODO:
+  if (result) {
+    const res = updateImportedFiles(result.from, object.from);
 
     filesMap.set(file, {
       children: result.children?.concat(object.children),
@@ -64,15 +56,10 @@ const handleVariablesInFile = (file, object) => {
 };
 
 const getProgram = (file) => {
-  if (file.endsWith(".ts") || file.endsWith(".js")) {
-    const data = fs.readFileSync(file, CHARACTER_ENCODING);
-    return tsESTree.parse(data);
-  }
-
-  if (file.endsWith(".tsx") || file.endsWith(".jsx")) {
-    const data = fs.readFileSync(file, CHARACTER_ENCODING);
-    return tsESTree.parse(data, { jsx: true });
-  }
+  const data = fs.readFileSync(file, CHARACTER_ENCODING);
+  return tsESTree.parse(data, {
+    jsx: file.endsWith(".tsx") || file.endsWith(".jsx") ? true : false,
+  });
 };
 
 const getFiles = () => {
@@ -85,11 +72,7 @@ const getFiles = () => {
     fs.readdirSync(currentPath, { withFileTypes: true }).forEach((file) => {
       if (file.isFile() && REGEXP_EXTENSIONS.test(file.name)) {
         const fullPath = path.resolve(currentPath, file.name);
-        handleVariablesInFile(fullPath, {
-          ownExport: [],
-          children: [],
-          from: {},
-        });
+
         results.push(fullPath);
       } else if (file.isDirectory()) {
         files.push(path.resolve(currentPath, file.name));
@@ -100,11 +83,11 @@ const getFiles = () => {
   return results;
 };
 
+const t1 = performance.now();
 const allProjectFiles = getFiles();
 
-const defineFullPathForFile = (filesPath, allFiles) => {
-  let currentPathFrom = "",
-    i = 0;
+const getFullPathForFile = (filesPath, allFiles) => {
+  let currentPathFrom = "";
   const ALL_EXTENSIONS = [
     ".ts",
     ".tsx",
@@ -117,14 +100,14 @@ const defineFullPathForFile = (filesPath, allFiles) => {
     "\\index.jsx",
   ];
 
-  while (!currentPathFrom && i < ALL_EXTENSIONS.length) {
-    const [result] = allFiles.filter((file) =>
-      file.includes(`${filesPath}${ALL_EXTENSIONS[i]}`)
+  for (let i = 0; i < ALL_EXTENSIONS.length; i++) {
+    const result = allFiles.find(
+      (file) => file === `${filesPath}${ALL_EXTENSIONS[i]}`
     );
     if (result) {
       currentPathFrom = result;
+      break;
     }
-    i++;
   }
 
   return currentPathFrom;
@@ -132,7 +115,6 @@ const defineFullPathForFile = (filesPath, allFiles) => {
 
 const defineNameOfImportedVariable = (importedFile) => {
   let name = "";
-  //   el.specifiers.forEach((importedFile) => {
   if (
     importedFile.local.name &&
     !importedFile[OWN_PROPERTY.IMPORTED] &&
@@ -147,7 +129,6 @@ const defineNameOfImportedVariable = (importedFile) => {
   ) {
     name = importedFile.imported.name;
   }
-  //   });
   return name;
 };
 
@@ -192,12 +173,28 @@ const handleFiles = () => {
   allProjectFiles.forEach((file) => {
     const program = getProgram(file);
 
+    // if (file.includes("AppRoutes.tsx")) {
+    //   program.body.forEach((node) => {
+    //     tsESTree.simpleTraverse(node, {
+    //       enter: (node) => {
+    //         if (node.type.startsWith(IMPORT)) {
+    //           console.log('node', node)
+    //         }
+    //       },
+    //     });
+    //   });
+    // }
+
+    const ownExport = [];
+    const children = [];
+    const from = {};
+
     program.body.forEach((element) => {
       let pathFrom = element?.source?.value,
         filesPath = "";
 
       if (pathFrom?.startsWith("~")) {
-        pathFrom = element.source?.value.replace(/(~\/)/gi, "");
+        pathFrom = element.source?.value.slice(2);
         filesPath = path.resolve(rootPath, pathFrom);
       }
 
@@ -205,178 +202,154 @@ const handleFiles = () => {
         if (!filesPath) {
           filesPath = path.resolve(path.dirname(file), pathFrom);
         }
-        const absoluteFilesPath = defineFullPathForFile(
+        const absoluteFilesPath = getFullPathForFile(
           filesPath,
           allProjectFiles
         );
-        handleVariablesInFile(file, {
-          ownExport: [],
-          children: [absoluteFilesPath],
-          from: {},
-        });
+
+        children.push(absoluteFilesPath);
       } else if (
         element.type.startsWith(EXPORT) &&
         element.type !== EXPORT_ALL &&
         !pathFrom
       ) {
         const name = defineNameOfExportedVariable(element);
-        handleVariablesInFile(file, {
-          ownExport: [
-            {
-              type: element.type,
-              name,
-              isVerified: false,
-              isFirstExport: true,
-            },
-          ],
-          children: [],
-          from: {},
+
+        ownExport.push({
+          type: element.type,
+          name,
         });
       } else if (
         element.type.startsWith(EXPORT) &&
         element.type !== EXPORT_ALL &&
         pathFrom
       ) {
-        //TODO: fix this moment
-        const absoluteFilesPath = defineFullPathForFile(
+        filesPath = path.resolve(path.dirname(file), pathFrom);
+        const absoluteFilesPath = getFullPathForFile(
           filesPath,
           allProjectFiles
         );
 
-        element.specifiers.forEach((exportedFile) => {
-          //TODO: if my export has a path from was export
-          // const name = defineNameOfExportedVariable(element);
-          handleVariablesInFile(file, {
-            ownExport: [],
-            children: [absoluteFilesPath],
-            // from: { [absoluteFilesPath]: [{ name, type: exportedFile.type }] },
-            from: {},
-          });
-        });
+        children.push(absoluteFilesPath);
       } else if (
         element.type.startsWith(IMPORT) &&
         !pathFrom?.endsWith(".scss")
       ) {
+        // const REGEXP = /.+?(?=\/)/;
+        // const [aaa] = pathFrom?.match(REGEXP);
+        // const ccc = aaa || pathFrom
+        if (UNUSED_LIBRARIES[pathFrom]) {
+          delete UNUSED_LIBRARIES[pathFrom];
+          return;
+        }
+
         if (!filesPath) {
           filesPath = path.resolve(path.dirname(file), pathFrom);
         }
         //TODO: '~/../test-utils/data' ????
         element.specifiers.forEach((importedFile) => {
-          const absoluteFilesPath = defineFullPathForFile(
+          //TODO: create 2 ways for import
+          const absoluteFilesPath = getFullPathForFile(
             filesPath,
             allProjectFiles
           );
+          //TODO: name of all import and func
           const name = defineNameOfImportedVariable(importedFile);
-          handleVariablesInFile(file, {
-            ownExport: [],
-            children: [],
-            from: { [absoluteFilesPath]: [{ name, type: importedFile.type }] },
-          });
+          const dataOfImportedFile = from[absoluteFilesPath];
+          if (dataOfImportedFile) {
+            from[absoluteFilesPath] = [...dataOfImportedFile, { name, type: importedFile.type }];
+          } else {
+            from[absoluteFilesPath] = [{ name, type: importedFile.type }];
+          }
+          //TODO: delete
         });
       }
     });
+    handleVariablesInFile(file, {
+      ownExport,
+      children,
+      from,
+    });
   });
-
-  // return filesMap;
 };
 
 const getExportFiles = () => {
-  //"C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts"
-  //"C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\index.ts"
-  ["C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\index.ts"].forEach((file) => {
+  const filePathsForHandling = Array.from(filesMap.keys());
+
+  filePathsForHandling.forEach((file) => {
     const data = filesMap.get(file);
     const result = Object.entries(data.from);
     //TODO: what with this function
-    const findRootExportFile = (file, arrWithResult, arr) => {
-      const arrWithOwnExport = [...arr];
-      const updatedData = arrWithResult.ownExport.map((importedProp) => {
-        return arrWithOwnExport.some(
-          (prop) => importedProp.name === prop.name && !importedProp.isVerified
-        )
-          ? { ...importedProp, isVerified: true }
-          : importedProp;
-      });
-      filesMap.set(file, {
-        children: [...arrWithResult.children],
-        ownExport: updatedData,
-        from: { ...arrWithResult.from },
-      });
-      const withExtraExport = arrWithOwnExport.filter((variable) => {
-        return updatedData.some(
-          (updatedVariable) =>
-            updatedVariable.name === variable.name &&
-            !updatedVariable.isVerified
+
+    // const handleAllImportFiles = (path, variable) => {
+    //   const fileFromDidExport = filesMap.get(path);
+    //   filesMap.set(path, {
+    //     ...fileFromDidExport,
+    //     ownExport: [],
+    //   });
+    // }
+
+    const updateDataOfOwnExport = (path, variable) => {
+      if (!path) return;
+      //TODO: refactoring
+      //TODO: handle separated styles
+      if (variable.type === IMPORT_NAMESPACE) {
+        const fileFromDidExport = filesMap.get(path);
+        filesMap.set(path, {
+          ...fileFromDidExport,
+          ownExport: [],
+        });
+      }
+
+      const fileFromDidExport = filesMap.get(path);
+      const allExportInFile = fileFromDidExport.ownExport;
+      const exportedVariable = allExportInFile.find((prop) => prop.name === variable.name);
+
+      if (exportedVariable) {
+        const updatedData = allExportInFile.filter(
+          (importedProp) => importedProp.name !== exportedVariable.name
         );
-      });
-      // console.log('arrWithOwnExport', arrWithOwnExport)
-      // console.log('arrWithResult', arrWithResult)
-      // console.log("updatedData", updatedData);
-      // console.log("withExtraExport", withExtraExport);
+
+        filesMap.set(path, {
+          ...fileFromDidExport,
+          ownExport: updatedData,
+        });
+      } else {
+        fileFromDidExport.children.forEach((child) => {
+          updateDataOfOwnExport(child, variable);
+        });
+      }
     };
 
     if (result.length) {
       result.forEach(([path, ownProperties]) => {
-        console.log('path', path)
-        console.log('ownProperties', ownProperties)
-        //TODO: ownProperties include only imported files ({name, type??})
-        //TODO: refactoring code
-        //TODO: this path should be deleted later when we add package.json
-        if (path) {
-          const fileFromDidExport = filesMap.get(path);
-          const allExportInFile = fileFromDidExport.ownExport;
-          //TODO: but what is ownExport don't include
-
-          ownProperties.forEach((prop) => {
-            
-          })
-
-          //'C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts'
-          if (allExportInFile.length) {
-            //TODO: ??????????
-            findRootExportFile(path, fileFromDidExport, ownProperties);
-          } else {
-            filesMap.get(path).children.forEach((file) => {
-              const result = filesMap.get(file);
-
-              if (result.ownExport.length) {
-                findRootExportFile(file, result, ownProperties);
-              }
-            });
-          }
-        }
+          ownProperties.forEach((variable) => {
+            updateDataOfOwnExport(path, variable);
+          });
       });
     }
   });
 
+  const UNUSED = [];
+
   for (let [key, value] of filesMap) {
     value.ownExport.forEach((variable) => {
-      if (!variable.isVerified) {
-        // console.log(`${variable.name} in ${key}`);
-      }
+      UNUSED.push(`${variable.name} in ${key}`);
     });
   }
 
-  //   return filesMap;
-};
-
-const searchUnusedLibraries = () => {
-  return Object.keys(package.dependencies).filter((key) => {
-    return !(UNUSED_LIBRARIES[key] === package.dependencies[key]);
-  });
+  return UNUSED;
 };
 
 console.log(
   "getExportFiles",
   handleFiles(),
   "unused libraries",
-  //   searchUnusedLibraries(),
+  UNUSED_LIBRARIES,
   "length",
-  getExportFiles()
+  getExportFiles(),
+  getExportFiles().length
 );
+const t2 = performance.now();
 
-console.log(
-  "!!!!",
-  filesMap.get(
-    "C:\\Users\\hanna.yermakovich\\Desktop\\PARSE\\find-unused-data\\src\\components\\account\\index.ts"
-  ).from
-);
+console.log("time", t2 - t1);

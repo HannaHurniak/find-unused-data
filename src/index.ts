@@ -17,17 +17,15 @@ import { Last, LAST } from "./components/last";
 
 import * as DDDDD from './components/cat';
 
-// import { TEST } from "last/last";
+import { TEST } from "./components/last/last";
 
-// import { User } from "ppp/user";
+import { User } from "./components/account/user";
 
-// import { APELSIN } from "@/card";
+import { APELSIN } from "./components/card/card";
 
-// import CAT from "@cat/cat";
+import CAT, { DOG } from "./components/cat/cat";
 
-// import CAT, { DOG } from "~/components/cat/cat";
-
-// console.log(DOG);
+console.log(DOG);
 getWorkers();
 const day = new Date();
 console.log(FUNCTIONS_NAME);
