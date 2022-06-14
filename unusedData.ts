@@ -6,12 +6,11 @@ const config = require("./tsconfig.json");
 const package = require("./package.json");
 
 const REGEXP_EXTENSIONS = /\.(ts|tsx|js|jsx|d\.ts)$/;
-const REGEXP_START_STRING = /(^\.\/|^\.\.\/)/gi;
 const rootPath = path.resolve("src");
 const CHARACTER_ENCODING = "utf8";
 const EXPORT = "Export";
 const IMPORT = "Import";
-const IMPORT_NAMESPACE = "ImportNamespaceSpecifier";
+const IMPORT_ALL = "ImportNamespaceSpecifier";
 const EXPORT_ALL = "ExportAllDeclaration";
 const DEFAULT = "default";
 const OWN_PROPERTY = {
@@ -19,9 +18,7 @@ const OWN_PROPERTY = {
   SPECIFIERS: "specifiers",
   IMPORTED: "imported",
 };
-
 const UNUSED_LIBRARIES = package.dependencies;
-
 const filesMap = new Map();
 
 //TODO: refactoring here
@@ -84,7 +81,6 @@ const getFiles = () => {
 };
 
 const t1 = performance.now();
-const allProjectFiles = getFiles();
 
 const getFullPathForFile = (filesPath, allFiles) => {
   let currentPathFrom = "";
@@ -118,7 +114,7 @@ const defineNameOfImportedVariable = (importedFile) => {
   if (
     importedFile.local.name &&
     !importedFile[OWN_PROPERTY.IMPORTED] &&
-    importedFile.type !== IMPORT_NAMESPACE
+    importedFile.type !== IMPORT_ALL
   ) {
     name = importedFile.local.name;
   } else if (importedFile?.local?.name === importedFile?.imported?.name) {
@@ -128,6 +124,8 @@ const defineNameOfImportedVariable = (importedFile) => {
     importedFile?.imported?.name
   ) {
     name = importedFile.imported.name;
+  } else if (importedFile.type === IMPORT_ALL) {
+    name = importedFile.local.name;
   }
   return name;
 };
@@ -170,6 +168,7 @@ const defineNameOfExportedVariable = (el) => {
 };
 
 const handleFiles = () => {
+  const allProjectFiles = getFiles();
   allProjectFiles.forEach((file) => {
     const program = getProgram(file);
 
@@ -177,8 +176,21 @@ const handleFiles = () => {
     //   program.body.forEach((node) => {
     //     tsESTree.simpleTraverse(node, {
     //       enter: (node) => {
-    //         if (node.type.startsWith(IMPORT)) {
-    //           console.log('node', node)
+    //         if (node.type === "ImportExpression") {
+    //           const pathFrom = node.source.value.slice(2);
+    //           const filesPath = path.resolve(rootPath, pathFrom);
+    //           const absoluteFilesPath = getFullPathForFile(
+    //             filesPath,
+    //             allProjectFiles
+    //           );
+    //           const program = getProgram(absoluteFilesPath);
+    //           program.body.forEach((el) => {
+    //             el?.specifiers?.forEach((exportedFile) => {
+    //               if (exportedFile?.exported?.name === DEFAULT){
+    //                 console.log('exportedFile', exportedFile.local)
+    //               }
+    //             })
+    //           })
     //         }
     //       },
     //     });
@@ -235,12 +247,14 @@ const handleFiles = () => {
         element.type.startsWith(IMPORT) &&
         !pathFrom?.endsWith(".scss")
       ) {
-        // const REGEXP = /.+?(?=\/)/;
-        // const [aaa] = pathFrom?.match(REGEXP);
-        // const ccc = aaa || pathFrom
+        //checking from which libraries were do export
+        //TODO: after this varification time was increased on 1 sec
+        const REGEXP = /.+?(?=\/)/;
+        const firstPartOfPath = pathFrom?.match(REGEXP);
         if (UNUSED_LIBRARIES[pathFrom]) {
           delete UNUSED_LIBRARIES[pathFrom];
-          return;
+        } else if (UNUSED_LIBRARIES[firstPartOfPath]) {
+          delete UNUSED_LIBRARIES[firstPartOfPath];
         }
 
         if (!filesPath) {
@@ -248,20 +262,66 @@ const handleFiles = () => {
         }
         //TODO: '~/../test-utils/data' ????
         element.specifiers.forEach((importedFile) => {
-          //TODO: create 2 ways for import
           const absoluteFilesPath = getFullPathForFile(
             filesPath,
             allProjectFiles
           );
-          //TODO: name of all import and func
-          const name = defineNameOfImportedVariable(importedFile);
-          const dataOfImportedFile = from[absoluteFilesPath];
-          if (dataOfImportedFile) {
-            from[absoluteFilesPath] = [...dataOfImportedFile, { name, type: importedFile.type }];
-          } else {
-            from[absoluteFilesPath] = [{ name, type: importedFile.type }];
+          if (importedFile.type !== IMPORT_ALL) {
+            const name = defineNameOfImportedVariable(importedFile);
+            const dataOfImportedFile = from[absoluteFilesPath];
+
+            if (dataOfImportedFile) {
+              from[absoluteFilesPath] = [
+                ...dataOfImportedFile,
+                { name, type: importedFile.type },
+              ];
+            } else {
+              from[absoluteFilesPath] = [{ name, type: importedFile.type }];
+            }
+          } else if (
+            importedFile.type === IMPORT_ALL &&
+            absoluteFilesPath &&
+            !UNUSED_LIBRARIES[pathFrom]
+          ) {
+            const name = defineNameOfImportedVariable(importedFile);
+
+            const findPropertyOfObject = (variable, objectName) => {
+              const arrayOfObjects = [variable];
+              const result = [];
+
+              while (arrayOfObjects.length) {
+                const currentElement = arrayOfObjects.shift();
+
+                for (let key in currentElement) {
+                  if (key === "closingElement") continue;
+                  if (currentElement[key]?.object?.name === objectName) {
+                    result.push(currentElement);
+                  } else {
+                    if (typeof currentElement[key] === "object") {
+                      arrayOfObjects.push(currentElement[key]);
+                    }
+                  }
+                }
+              }
+
+              result.forEach((el) => {
+                const dataOfImportedFile = from[absoluteFilesPath];
+                if (dataOfImportedFile) {
+                  from[absoluteFilesPath] = [
+                    ...dataOfImportedFile,
+                    { name: el.name.property.name, type: importedFile.type },
+                  ];
+                } else if (el.name) {
+                  from[absoluteFilesPath] = [
+                    { name: el.name.property.name, type: importedFile.type },
+                  ];
+                }
+              });
+            };
+            program.body.forEach((variable) => {
+              findPropertyOfObject(variable, name);
+            });
           }
-          //TODO: delete
         });
       }
     });
@@ -279,31 +339,14 @@ const getExportFiles = () => {
   filePathsForHandling.forEach((file) => {
     const data = filesMap.get(file);
     const result = Object.entries(data.from);
-    //TODO: what with this function
-
-    // const handleAllImportFiles = (path, variable) => {
-    //   const fileFromDidExport = filesMap.get(path);
-    //   filesMap.set(path, {
-    //     ...fileFromDidExport,
-    //     ownExport: [],
-    //   });
-    // }
-
     const updateDataOfOwnExport = (path, variable) => {
       if (!path) return;
-      //TODO: refactoring
-      //TODO: handle separated styles
-      if (variable.type === IMPORT_NAMESPACE) {
-        const fileFromDidExport = filesMap.get(path);
-        filesMap.set(path, {
-          ...fileFromDidExport,
-          ownExport: [],
-        });
-      }
 
       const fileFromDidExport = filesMap.get(path);
       const allExportInFile = fileFromDidExport.ownExport;
-      const exportedVariable = allExportInFile.find((prop) => prop.name === variable.name);
+      const exportedVariable = allExportInFile.find(
+        (prop) => prop.name === variable.name
+      );
 
       if (exportedVariable) {
         const updatedData = allExportInFile.filter(
@@ -323,9 +366,9 @@ const getExportFiles = () => {
 
     if (result.length) {
       result.forEach(([path, ownProperties]) => {
-          ownProperties.forEach((variable) => {
-            updateDataOfOwnExport(path, variable);
-          });
+        ownProperties.forEach((variable) => {
+          updateDataOfOwnExport(path, variable);
+        });
       });
     }
   });
@@ -350,6 +393,7 @@ console.log(
   getExportFiles(),
   getExportFiles().length
 );
+
 const t2 = performance.now();
 
 console.log("time", t2 - t1);
